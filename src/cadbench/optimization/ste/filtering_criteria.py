@@ -53,15 +53,18 @@ def filter_dominance_over_other_tasks(matrices: dict[str, MetricMatrix], margin_
 
     for concept in concepts:
         best_specialist_on_c = {c: max(m[c][c] for m in matrices.values()) for c in concepts if c != concept}
-        solving = sum(
-            max(m[concept][c] for m in matrices.values()) / best_specialist_on_c[c] >= margin_pct
-            for c in concepts if c != concept
-        )
+        solving_max = 0
+        for matrix in matrices.values():
+            solving = sum(
+                matrix[concept][c] / best_specialist_on_c[c] >= margin_pct
+                for c in concepts if c != concept
+            )
+            solving_max = max(solving_max, solving)
 
-        if solving > max_tasks_no:
+        if solving_max > max_tasks_no:
             concepts_to_remove.append(concept)
             logger.info(
-                f'Filtering out concept {concept} due to solving {solving} tasks '
+                f'Filtering out concept {concept} due to solving {solving_max} tasks '
                 f'at >={margin_pct:.0%} of their best specialist (more than {max_tasks_no} tasks)'
             )
 

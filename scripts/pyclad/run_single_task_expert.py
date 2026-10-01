@@ -5,7 +5,9 @@ import pathlib
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import torch
 from matplotlib import pyplot as plt
 from pyclad.analysis.scenario_heatmap import plot_metric_heatmap
 from pyclad.callbacks.evaluation.concept_metric_evaluation import ConceptMetricCallback
@@ -45,6 +47,8 @@ def parse_arguments():
     parser.add_argument("--output", type=str, help="Output directory for results (if not given, "
                                                    "it will be created automatically as subdir in the parent of csv file",
                         required=False, default=None)
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Seed for the torch/numpy global RNG state and for Isolation Forest.")
 
     args = parser.parse_args()
     input_path = Path(args.input)
@@ -53,7 +57,7 @@ def parse_arguments():
     if not input_path.exists():
         parser.error(f"Input path not found: {input_path}")
 
-    return input_path, output_dir
+    return input_path, output_dir, args.seed
 
 
 def collect_datasets(input_path: Path) -> list[Path]:
@@ -62,7 +66,7 @@ def collect_datasets(input_path: Path) -> list[Path]:
     return sorted(input_path.glob("*.csv"))
 
 
-def _run_ste_for_dataset(dataset_path: Path, output_dir: Path):
+def _run_ste_for_dataset(dataset_path: Path, output_dir: Path, seed: int = 42):
     logging.info(f"Processing dataset path: {dataset_path}")
     logging.info(f"Output directory: {output_dir}")
 
@@ -71,7 +75,7 @@ def _run_ste_for_dataset(dataset_path: Path, output_dir: Path):
     input_features = dataset.train_concepts()[0].data.shape[1]
 
     models = {
-        "IsolationForest": IsolationForestAdapter,
+        "IsolationForest": lambda: IsolationForestAdapter(random_state=seed),
         "Autoencoder": lambda: create_autoencoder(input_features),
         'AE1_SVM': lambda: PyODAdapter(ContinualAE1SVM(epochs=20, batch_size=128, kernel_approx_features=512), model_name='AE1_SVM')
 
@@ -133,14 +137,17 @@ def _run_ste_for_dataset(dataset_path: Path, output_dir: Path):
             plt.close(ax.get_figure())
 
 if __name__ == "__main__":
-    dataset_path, output_dir = parse_arguments()
+    dataset_path, output_dir, seed = parse_arguments()
     if output_dir is None:
         output_dir = dataset_path if dataset_path.is_dir() else dataset_path.parent
     else:
         output_dir = pathlib.Path(output_dir)
 
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
     files = collect_datasets(dataset_path)
     for file in files:
         file_output_path = create_path(output_dir / file.stem / 'ste')
         setup_logger(logs_path=file_output_path / "logs.log")
-        _run_ste_for_dataset(file, file_output_path)
+        _run_ste_for_dataset(file, file_output_path, seed=seed)

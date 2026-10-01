@@ -2,7 +2,7 @@
 
 This repository provides the code and experimental pipeline accompanying the paper:
 
-**Towards Principled Continual Anomaly Detection Benchmarks: A Systematic Framework and Validated Scenarios**
+**Towards Principled Continual Anomaly Detection: A Systematic Framework and Benchmark Scenarios**
 
 The repository implements an end-to-end framework for transforming existing tabular anomaly-detection datasets into validated **continual anomaly detection (CAD)** scenarios. Rather than relying on arbitrary chronological or heuristic task splits, the framework discovers candidate tasks, evaluates their learnability and cross-task structure, filters unsuitable tasks, derives principled task orderings, and validates the resulting scenarios under multiple continual-learning strategies.
 
@@ -31,15 +31,20 @@ The framework supports:
 
 ## Benchmark Scenarios
 
-The paper instantiates the framework on three large-scale tabular cybersecurity datasets and derives several validated CAD scenarios.
+The paper instantiates the framework on six tabular datasets from three domains (network intrusion detection, particle physics, and predictive maintenance) and derives eight validated CAD scenarios.
 
-| Scenario | Description | # Tasks | # Samples | Test anomaly ratio |
-|---|---:|---:|---:|---:|
-| `CAD-CICIDS2017` | Single-dataset CAD scenario from CICIDS2017 | 6 | 2,076,848 | 18.77% |
-| `CAD-CICIDS2018` | Single-dataset CAD scenario from CICIDS2018 | 5 | 2,590,771 | 28.04% |
-| `CAD-CICUNSW` | Single-dataset CAD scenario from CIC-UNSW-NB15 | 5 | 1,084,928 | 12.76% |
-| `MCAD-CIC-3x1` | Multi-dataset scenario with one task per dataset | 3 | 17,915,569 | 10.42% |
-| `MCAD-CIC-3xN` | Multi-dataset scenario combining retained tasks across datasets | 13 | 3,581,792 | 27.36% |
+| Scenario | Domain | # Features | # Tasks | # Train samples | # Test samples | # Test anomalies | Test anomaly ratio (range over tasks) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `CAD-CICIDS2017` | Intrusion detection | 78 | 6 | 1,588,098 | 488,750 | 91,723 | 18.8% (12.9–50.0) |
+| `CAD-CICIDS2018` | Intrusion detection | 78 | 5 | 1,925,233 | 665,538 | 186,647 | 28.0% (2.1–50.0) |
+| `CAD-CICUNSW` | Intrusion detection | 79 | 5 | 843,281 | 241,647 | 30,825 | 12.8% (8.1–50.0) |
+| `CAD-MiniBooNE` | Particle physics | 50 | 5 | 34,647 | 31,469 | 22,805 | 72.5% (49.8–89.0) |
+| `CAD-Scania` | Truck maintenance | 162 | 3 | 40,205 | 10,879 | 825 | 7.6% (3.4–28.9) |
+| `CAD-TCM` | Steel manufacturing | 51 | 8 | 83,275 | 25,597 | 4,776 | 18.7% (9.7–38.4) |
+| `MCAD-CIC-3x1` | Intrusion detection (3 datasets, one task each) | 77 | 3 | 12,036,713 | 5,878,856 | 1,866,616 | 31.8% (9.6–44.8) |
+| `MCAD-CIC-3xN` | Intrusion detection (3 datasets, retained tasks) | 77 | 13 | 2,667,154 | 914,638 | 250,247 | 27.4% (2.1–50.0) |
+
+The two multi-dataset scenarios use the 77 features shared by the three intrusion-detection sources after harmonizing their attribute names.
 
 Each scenario is associated with six principled task orderings:
 
@@ -52,7 +57,7 @@ Each scenario is associated with six principled task orderings:
 
 These orderings are intended to expose different forms of continual-learning behavior, including forgetting, transfer, adaptation difficulty, robustness to ordering effects, and sensitivity to concept drift.
 
-Data is available [on HuggingFace](https://huggingface.co/anonymizeddb)
+The scenarios are available [on Hugging Face](https://huggingface.co/collections/lifelonglab/tabular-cad-benchmarks).
 
 ---
 
@@ -61,6 +66,8 @@ Data is available [on HuggingFace](https://huggingface.co/anonymizeddb)
 ```
 .
 ├── requirements.txt
+├── docs/                               # Dataset-specific notes (MiniBooNE, Scania, TCM)
+├── tests/                              # Unit tests of the filtering criteria
 ├── src/
 │   └── cadbench/
 │       ├── logger.py                   # Logging setup
@@ -69,6 +76,9 @@ Data is available [on HuggingFace](https://huggingface.co/anonymizeddb)
 │       │   ├── cicids2017.py
 │       │   ├── cicids2018.py
 │       │   ├── cicunsw.py
+│       │   ├── miniboone.py
+│       │   ├── scania.py
+│       │   └── tcm.py
 │       ├── optimization/
 │       │   ├── processing.py           # Concept reordering utilities
 │       │   └── ste/
@@ -87,7 +97,10 @@ Data is available [on HuggingFace](https://huggingface.co/anonymizeddb)
     ├── datasets/
     │   ├── process_cicds2017.py        # Preprocess / cluster CICIDS2017
     │   ├── process_cicids2018.py       # Preprocess / cluster CICIDS2018
-    │   └── process_cicunsw.py          # Preprocess / cluster CIC-UNSW-NB15
+    │   ├── process_cicunsw.py          # Preprocess / cluster CIC-UNSW-NB15
+    │   ├── process_miniboone.py        # Preprocess / cluster MiniBooNE
+    │   ├── process_scania.py           # Preprocess / cluster APS Failure at Scania Trucks
+    │   └── process_tcm.py              # Preprocess / split by file / cluster TCM
     ├── optimization/
     │   └── optimize_by_ste.py          # STE-based concept ordering & split selection
     ├── pyclad/
@@ -113,6 +126,12 @@ Add the repository source directory to `PYTHONPATH`:
 export PYTHONPATH=src:$PYTHONPATH
 ```
 
+Run the unit tests of the filtering criteria:
+
+```bash
+pytest
+```
+
 
 
 ---
@@ -132,7 +151,9 @@ After installation, the full benchmark pipeline can be reproduced through the fo
 9. validate continual-learning strategies,
 10. inspect results.
 
-The commands below show a minimal end-to-end example for `CAD-CICIDS2017`.
+The commands below show a minimal end-to-end example for `CAD-CICIDS2017`. The other datasets follow the same stages with their own `scripts/datasets/process_*.py` script; dataset-specific instructions for MiniBooNE, Scania, and TCM are given in [`docs/`](docs/).
+
+All randomized stages are seeded: the clustering and single-task expert scripts accept a `--seed` option (default 42).
 
 ### 1. Configure paths
 
@@ -231,6 +252,8 @@ python scripts/pyclad/run_validation_strategies.py \
     --mode ordering \
     --model Autoencoder
 ```
+
+The validation script reads both the orderings produced by `optimize_by_ste.py` and the `orderings.json` files distributed with the released scenarios.
 
 A valid scenario should satisfy three conditions:
 

@@ -143,6 +143,7 @@ class DAGMM(Model):
         latent_dim: int = None,
         contamination: float = 0.05,
         seed: int = None,
+        freeze_preprocessing: bool = True,
     ):
         if seed is not None:
             torch.manual_seed(seed)
@@ -157,17 +158,28 @@ class DAGMM(Model):
         self.contamination = contamination
         self.seed = seed
         self._module: _DAGMMModule = None
+        self._module_n_features: int = None
         self._scaler = StandardScaler()
+        self.freeze_preprocessing = freeze_preprocessing
 
     def fit(self, data: np.ndarray):
-        data = self._scaler.fit_transform(data)
+        # Scores are computed in the scaler's coordinates: refitting it per concept
+        # would redefine them and erase performance on past concepts.
+        if self.freeze_preprocessing and hasattr(self._scaler, "mean_"):
+            data = self._scaler.transform(data)
+        else:
+            data = self._scaler.fit_transform(data)
         n_features = data.shape[1]
         latent_dim = self.latent_dim if self.latent_dim is not None else 5 + n_features // 20
-        self._module = _DAGMMModule(
-            autoencoder=_AutoencoderModule(n_features, latent_dim),
-            n_gmm=self.gmm_k,
-            latent_dim=latent_dim + 2,
-        )
+        # Warm-start: keep weights across concepts; only (re)build when absent or the
+        # feature dimension changed.
+        if self._module is None or self._module_n_features != n_features:
+            self._module = _DAGMMModule(
+                autoencoder=_AutoencoderModule(n_features, latent_dim),
+                n_gmm=self.gmm_k,
+                latent_dim=latent_dim + 2,
+            )
+            self._module_n_features = n_features
         optimizer = torch.optim.Adam(self._module.parameters(), lr=self.lr)
         loader = DataLoader(
             TensorDataset(torch.FloatTensor(data)),
@@ -182,8 +194,13 @@ class DAGMM(Model):
                 loss, _, _, _ = self._module.loss_function(
                     batch, dec, z, gamma, self.lambda_energy, self.lambda_cov_diag
                 )
+                if getattr(self, "_loss_penalty", None) is not None:
+                    loss = loss + self._loss_penalty(self._module, batch)
                 optimizer.zero_grad()
-                torch.clamp(loss, max=1e7).backward()
+                # No loss clamp: clamp has zero gradient above max, which silently
+                # disables training whenever the loss spikes (e.g. drifted concepts);
+                # clip_grad_norm_ below already guards against exploding gradients.
+                loss.backward()
                 torch.nn.utils.clip_grad_norm_(self._module.parameters(), 5)
                 optimizer.step()
 

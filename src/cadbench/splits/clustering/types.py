@@ -12,6 +12,7 @@ class ClusteringConfig:
     min_anomalous_samples: int
     min_clusters: int
     sampling_size: int | None = None
+    random_state: int = 42
 
     def min_samples(self):
         return self.min_normal_samples + self.min_anomalous_samples

@@ -31,7 +31,7 @@ class ForgettingMeasure(ConceptLevelMetric):
                 results.append(0.0)
                 continue
             forgetting_after_learning_task = []
-            for evaluated_task in range(learned_task + 1):
+            for evaluated_task in range(learned_task):
                 previous_max = max(metric_matrix[t][evaluated_task] for t in range(learned_task + 1))
                 current_value = metric_matrix[learned_task][evaluated_task]
                 forgetting_after_learning_task.append(max(0, previous_max - current_value))

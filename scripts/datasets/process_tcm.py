@@ -3,7 +3,7 @@ import pathlib
 
 import pandas as pd
 
-from cadbench.datasets.cicids2017 import preprocess_cicids2017, split_cicids2017_by_day
+from cadbench.datasets.tcm import preprocess_tcm, split_tcm_by_file
 from cadbench.logger import setup_logger
 from cadbench.paths import OUTPUT_PATH, create_path, RESOURCES_PATH
 from cadbench.splits.clustering.clustering import CLUSTERING_ALGORITHMS, cluster_dataset
@@ -11,18 +11,18 @@ from cadbench.splits.clustering.types import ClusteringConfig
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Preprocess and/or cluster CICIDS2017 dataset")
+    parser = argparse.ArgumentParser(description="Preprocess and/or cluster TCM dataset")
     parser.add_argument(
         "--preprocess",
         action="store_true",
         default=False,
-        help="Run CICIDS2017 preprocessing (creates cicids2017_single_concept_minmax.csv and related files)",
+        help="Run TCM preprocessing (single-concept baseline)",
     )
     parser.add_argument(
-        "--split-by-day",
+        "--split-by-file",
         action="store_true",
         default=False,
-        help="Split dataset into concepts by source file (one concept per day/session CSV)",
+        help="Split TCM into one concept per source file (tcm5_dataset_N.csv)",
     )
     parser.add_argument(
         "--cluster",
@@ -36,7 +36,6 @@ def parse_arguments():
         default=None,
         help="Input CSV used for clustering (required with --cluster)",
     )
-
     parser.add_argument(
         "--sampled-size",
         type=int,
@@ -62,7 +61,7 @@ def parse_arguments():
         type=pathlib.Path,
         default=None,
         help="Override the output directory for clustered CSVs (default: "
-             "OUTPUT_PATH/datasets/cicids2017/clustering/). Use a unique directory per "
+             "OUTPUT_PATH/datasets/tcm/clustering/). Use a unique directory per "
              "concurrent invocation (e.g. per seed) -- the default location is shared "
              "and NOT safe to write to from parallel runs.",
     )
@@ -76,14 +75,14 @@ def parse_arguments():
     return args
 
 
-def _cluster_cicids2017(data_path: pathlib.Path, dataset_path: pathlib.Path, sampled_size: int | None = None,
-                        seed: int = 42, algorithms: list[str] | None = None,
-                        output_override: pathlib.Path | None = None):
+def _cluster_tcm(data_path: pathlib.Path, dataset_path: pathlib.Path, sampled_size: int | None = None,
+                 seed: int = 42, algorithms: list[str] | None = None,
+                 output_override: pathlib.Path | None = None):
     raw_df = pd.read_csv(data_path)
     feature_columns = [
         col
         for col in raw_df.columns
-        if col not in ["label", "concept_part", "concept_id", "concept_name"]
+        if col not in ["label", "concept_part", "concept_split", "concept_id", "concept_name"]
     ]
     output_path = create_path(output_override) if output_override is not None else create_path(dataset_path / "clustering")
     clustering_config = ClusteringConfig(
@@ -102,7 +101,7 @@ def _cluster_cicids2017(data_path: pathlib.Path, dataset_path: pathlib.Path, sam
         raw_df,
         config=clustering_config,
         output_path=output_path,
-        dataset_name="cicids",
+        dataset_name="tcm",
         algorithms=restricted_algorithms,
     )
 
@@ -111,14 +110,17 @@ if __name__ == '__main__':
     args = parse_arguments()
     setup_logger()
 
-    dataset_path = create_path(OUTPUT_PATH / "datasets" / "cicids2017")
+    dataset_path = create_path(OUTPUT_PATH / "datasets" / "tcm")
 
     if args.preprocess:
-        preprocess_cicids2017(RESOURCES_PATH / 'datasets' / "tabular" / 'cicids2017', output_path=dataset_path)
+        preprocess_tcm(
+            RESOURCES_PATH / 'datasets' / 'tabular' / 'tcm',
+            output_path=dataset_path,
+        )
 
-    if args.split_by_day:
-        split_cicids2017_by_day(
-            RESOURCES_PATH / 'datasets' / 'tabular' / 'cicids2017',
+    if args.split_by_file:
+        split_tcm_by_file(
+            RESOURCES_PATH / 'datasets' / 'tabular' / 'tcm',
             output_path=dataset_path,
         )
 
@@ -128,5 +130,5 @@ if __name__ == '__main__':
         if not input_file.exists():
             raise FileNotFoundError(f"Input file not found: {input_file}")
 
-        _cluster_cicids2017(input_file, dataset_path, sampled_size=args.sampled_size,
-                            seed=args.seed, algorithms=args.algorithms, output_override=args.cluster_output)
+        _cluster_tcm(input_file, dataset_path, sampled_size=args.sampled_size,
+                    seed=args.seed, algorithms=args.algorithms, output_override=args.cluster_output)

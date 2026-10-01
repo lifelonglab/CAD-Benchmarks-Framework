@@ -148,6 +148,7 @@ def _run_for_dataset(dataset_path: Path, output_dir: Path, selected_model: str |
         logger.warning(f"Only {n_initial_tasks} tasks in {dataset_path} (min required: {min_tasks}), skipping.")
         return None
 
+    n_tasks = n_initial_tasks
     if should_filter:
         logger.info("Filtering uninformative concepts")
         # concepts_to_keep = filter_concepts(ste_results)
@@ -158,8 +159,7 @@ def _run_for_dataset(dataset_path: Path, output_dir: Path, selected_model: str |
         with open(stats_path, "w") as f:
             json.dump(filtering_stats.to_dict(), f, indent=2)
         logger.info(f"Saved filtering stats to {stats_path}")
-
-    n_tasks = len(concepts_to_keep)
+        n_tasks = len(concepts_to_keep)
     # n_tasks = len(df['concept_id'].unique())
     if min_tasks is not None and n_tasks < min_tasks:
         logger.warning(f"Only {n_tasks} tasks remaining (min required: {min_tasks}), skipping {dataset_path}.")
@@ -246,7 +246,7 @@ if __name__ == "__main__":
         for ste_results, dataset_path, orderings in valid_results
         if dataset_path in ordering_ranks
     ]
-    if len(split_results) > 1:
+    if len(split_results) >= 1:
         best, selection_report = select_best_split(split_results)
         report_path = output_dir / "split_selection_report.json"
         with open(report_path, "w") as f:

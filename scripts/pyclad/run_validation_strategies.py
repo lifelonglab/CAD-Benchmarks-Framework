@@ -78,7 +78,9 @@ def _load_raw_datasets(dataset_path: Path) -> Generator[tuple[ConceptsDataset, s
 def _load_ordered_datasets(dataset_path: Path) -> Generator[tuple[ConceptsDataset, str, int], Any, None]:
     with open(dataset_path) as f:
         spec = json.load(f)
-    for ordering_key in spec["orderings"]:
+    orderings = spec["orderings"]
+    ordering_keys = [o["name"] for o in orderings] if isinstance(orderings, list) else list(orderings)
+    for ordering_key in ordering_keys:
         dataset, name = load_ordered_dataset(dataset_path, ordering_key)
         input_features = dataset.train_concepts()[0].data.shape[1]
         yield dataset, name, input_features

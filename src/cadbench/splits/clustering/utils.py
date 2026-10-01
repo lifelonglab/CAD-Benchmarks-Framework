@@ -5,12 +5,12 @@ from cadbench.splits.utils import split_normal_train_test
 
 logger = logging.getLogger(__name__)
 
-def transform_to_split_concepts(df: pd.DataFrame, concept_name: str = 'C') -> pd.DataFrame:
+def transform_to_split_concepts(df: pd.DataFrame, concept_name: str = 'C', random_state: int = 42) -> pd.DataFrame:
     concepts = []
     for concept_id, cluster_id in enumerate(df['cluster'].unique()):
         concept_df = split_normal_train_test(df[df['cluster'] == cluster_id],
                                              test_size=0.2,
-                                             random_state=42)
+                                             random_state=random_state)
         concept_df['concept_id'] = concept_id
         concept_df['concept_name'] = f"{concept_name}_{concept_id}"
         concepts.append(concept_df)

@@ -52,7 +52,7 @@ def cluster_normal_random_anomalies(raw_df: pd.DataFrame,
     result_df = normal_df.copy()
 
     for cluster_id in valid_clusters:
-        sampled_anomalies = anomalous_df.sample(n=anomalies_per_cluster, random_state=42)
+        sampled_anomalies = anomalous_df.sample(n=anomalies_per_cluster, random_state=config.random_state)
         anomalous_df = anomalous_df.drop(sampled_anomalies.index)
         sampled_anomalies['cluster'] = cluster_id
         result_df = pd.concat([result_df, sampled_anomalies], axis=0)
@@ -110,7 +110,7 @@ def _cluster_data(df: pd.DataFrame,
         df['cluster'] = algorithm.fit_predict(df[config.feature_columns])
         return df
     else:
-        sample_df = df.sample(n=config.sampling_size, random_state=42)
+        sample_df = df.sample(n=config.sampling_size, random_state=config.random_state)
         remaining_df = df.drop(sample_df.index)
 
         sample_df['cluster'] = algorithm.fit_predict(sample_df[config.feature_columns])

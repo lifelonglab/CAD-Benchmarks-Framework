@@ -43,6 +43,9 @@ def order_by_generalization(metric_matrix: MetricMatrix, descending: bool = True
     """
     concepts = list(metric_matrix.keys())
     K = len(concepts)
+    if K < 2:
+        # No other concept to generalize to -- score is undefined, not zero.
+        return [(c, float("nan")) for c in concepts]
     scores = [
         (c, sum(metric_matrix[c][other] for other in concepts if other != c) / (K - 1))
         for c in concepts

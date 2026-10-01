@@ -24,9 +24,11 @@ CLUSTERING_METHODS: dict[str, ClusteringMethod] = {
 
 CLUSTERING_ALGORITHMS: dict[str, tuple[Callable[[ClusteringConfig], ClusterMixin], int | None]] = {
     # algorithm name -> (algorithm constructor, max size of dataset to run without sampling)
-    'KMeans': (lambda config: KMeans(n_clusters=config.min_clusters, random_state=42), None),
-    'GaussianMixture': (lambda _: GaussianMixture(n_components=10, covariance_type='diag', reg_covar=1e-3), None),
-    'SpectralClustering': (lambda config: SpectralClustering(n_clusters=config.min_clusters, random_state=42,
+    'KMeans': (lambda config: KMeans(n_clusters=config.min_clusters, random_state=config.random_state), None),
+    'GaussianMixture': (lambda config: GaussianMixture(n_components=10, covariance_type='diag', reg_covar=1e-3,
+                                                        random_state=config.random_state), None),
+    'SpectralClustering': (lambda config: SpectralClustering(n_clusters=config.min_clusters,
+                                                              random_state=config.random_state,
                                                               affinity='nearest_neighbors'), 100_000),
     # 'HDBSCAN': (lambda config: HDBSCAN(min_cluster_size=config.min_samples()), 10_000),
     # HDBSCAN can be slow on large datasets
@@ -38,11 +40,15 @@ CLUSTERING_ALGORITHMS: dict[str, tuple[Callable[[ClusteringConfig], ClusterMixin
 def cluster_dataset(raw_df: pd.DataFrame,
                     config: ClusteringConfig,
                     output_path: pathlib.Path,
-                    dataset_name: str):
+                    dataset_name: str,
+                    methods: dict[str, ClusteringMethod] | None = None,
+                    algorithms: dict[str, tuple[Callable[[ClusteringConfig], ClusterMixin], int | None]] | None = None):
+    methods = CLUSTERING_METHODS if methods is None else methods
+    algorithms = CLUSTERING_ALGORITHMS if algorithms is None else algorithms
 
     logger.info(f"Starting clustering for dataset {dataset_name}; clustering config: {config}")
-    for method_name, clustering_method in CLUSTERING_METHODS.items():
-        for alg_name, (algorithm, max_ds_size) in CLUSTERING_ALGORITHMS.items():
+    for method_name, clustering_method in methods.items():
+        for alg_name, (algorithm, max_ds_size) in algorithms.items():
             logger.info(f"Clustering using {method_name} and algorithm {alg_name}")
             logger.info(f"Clustering with algorithm: {alg_name}")
             if max_ds_size is not None and len(raw_df) > max_ds_size and (
@@ -52,7 +58,8 @@ def cluster_dataset(raw_df: pd.DataFrame,
 
             try:
                 clustered_df = clustering_method(raw_df.copy(), algorithm, config)
-                concepts_df = transform_to_split_concepts(clustered_df, concept_name=dataset_name)
+                concepts_df = transform_to_split_concepts(clustered_df, concept_name=dataset_name,
+                                                           random_state=config.random_state)
 
                 sampled_postfix = f"_sampled_{config.sampling_size}" if config.sampling_size is not None else ""
                 out_file = output_path / f"{dataset_name}_clustered_{method_name}_{alg_name}{sampled_postfix}.csv"

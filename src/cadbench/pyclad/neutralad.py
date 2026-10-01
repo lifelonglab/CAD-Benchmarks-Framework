@@ -33,6 +33,7 @@ class NeuTraLAD(Model):
         bias: bool = False,
         contamination: float = 0.05,
         seed: int = None,
+        freeze_preprocessing: bool = True,
     ):
         if seed is not None:
             torch.manual_seed(seed)
@@ -51,26 +52,38 @@ class NeuTraLAD(Model):
         self.contamination = contamination
         self.seed = seed
         self._net: _TabNeuTraLADNet = None
+        self._net_n_features: int = None
         self._criterion: _DCL = None
         self._scaler = StandardScaler()
+        self.freeze_preprocessing = freeze_preprocessing
 
     def fit(self, data: np.ndarray):
         if len(data) > 500_000:
             rng = np.random.default_rng(self.seed)
             data = data[rng.choice(len(data), size=500_000, replace=False)]
-        data = self._scaler.fit_transform(data)
+        # Scores are computed in the scaler's coordinates: refitting it per concept
+        # would redefine them and erase performance on past concepts.
+        if self.freeze_preprocessing and hasattr(self._scaler, "mean_"):
+            data = self._scaler.transform(data)
+        else:
+            data = self._scaler.fit_transform(data)
         n_features = data.shape[1]
-        self._net = _TabNeuTraLADNet(
-            n_features=n_features,
-            n_trans=self.n_trans,
-            trans_type=self.trans_type,
-            enc_hidden_dims=self.hidden_dims,
-            trans_hidden_dims=self.trans_hidden_dims,
-            activation=self.act,
-            bias=self.bias,
-            rep_dim=self.rep_dim,
-        )
-        self._criterion = _DCL(temperature=self.temp)
+        # Warm-start: keep weights across concepts; only (re)build when absent or the
+        # feature dimension changed.
+        if self._net is None or self._net_n_features != n_features:
+            self._net = _TabNeuTraLADNet(
+                n_features=n_features,
+                n_trans=self.n_trans,
+                trans_type=self.trans_type,
+                enc_hidden_dims=self.hidden_dims,
+                trans_hidden_dims=self.trans_hidden_dims,
+                activation=self.act,
+                bias=self.bias,
+                rep_dim=self.rep_dim,
+            )
+            self._net_n_features = n_features
+        if self._criterion is None:
+            self._criterion = _DCL(temperature=self.temp)
         optimizer = torch.optim.Adam(self._net.parameters(), lr=self.lr)
         loader = DataLoader(
             TensorDataset(torch.FloatTensor(data)),
@@ -83,6 +96,8 @@ class NeuTraLAD(Model):
             for (batch,) in loader:
                 z = self._net(batch)
                 loss = self._criterion(z)
+                if getattr(self, "_loss_penalty", None) is not None:
+                    loss = loss + self._loss_penalty(self._net, batch)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -161,6 +176,17 @@ class _TabNeuTraLADNet(nn.Module):
         x_cat = torch.cat([x.unsqueeze(1), x_transform], dim=1)
         zs = self.enc(x_cat.reshape(-1, x.shape[-1]))
         return zs.reshape(x.shape[0], self.n_trans + 1, self.z_dim)
+
+    def hidden_repr(self, x):
+        """The encoder's last hidden activation for the plain (untransformed) input.
+
+        Used only for LwF distillation: ``forward()``'s output feeds ``_DCL``'s
+        contrastive loss directly (over original vs. transformed views), so
+        distilling it would pin that comparison to the teacher's. This is one
+        layer earlier — the encoder's own pre-final-projection activation — and
+        computed only for the plain input, upstream of the transform comparisons.
+        """
+        return self.enc.network[:-1](x)
 
 
 class _DCL(nn.Module):

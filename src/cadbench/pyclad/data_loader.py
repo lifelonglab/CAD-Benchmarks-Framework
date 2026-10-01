@@ -9,6 +9,18 @@ from pyclad.data.readers.concepts_readers import read_concepts_from_df
 from cadbench.optimization.processing import reorder_concepts
 
 
+def _normalize_orderings(orderings) -> dict[str, list[str]]:
+    """Return orderings as a ``{name: task_sequence}`` mapping.
+
+    Supports both the released list format
+    ``[{"name": ..., "task_sequence": [...]}, ...]`` and the dict format
+    ``{name: [...]}`` produced by optimize_by_ste.py.
+    """
+    if isinstance(orderings, list):
+        return {o["name"]: o["task_sequence"] for o in orderings}
+    return orderings
+
+
 def load_ordered_dataset(ordering_json: Path, ordering_key: str) -> tuple[ConceptsDataset, str]:
     """Load a dataset from an orderings JSON produced by optimize_by_ste.py.
 
@@ -23,14 +35,15 @@ def load_ordered_dataset(ordering_json: Path, ordering_key: str) -> tuple[Concep
     with open(ordering_json) as f:
         spec = json.load(f)
 
-    if ordering_key not in spec["orderings"]:
-        raise KeyError(f"Ordering key '{ordering_key}' not found. Available: {list(spec['orderings'].keys())}")
+    orderings = _normalize_orderings(spec["orderings"])
+    if ordering_key not in orderings:
+        raise KeyError(f"Ordering key '{ordering_key}' not found. Available: {list(orderings.keys())}")
 
     source_path = Path(spec["source"])
     df = pd.read_csv(source_path)
     if 'task_id' in df.columns:
         df = df.rename(columns={'task_id': 'concept_id', 'task_name': 'concept_name', 'task_split': 'concept_split'})
-    concepts_order = spec["orderings"][ordering_key]
+    concepts_order = orderings[ordering_key]
     df = reorder_concepts(df, concepts_order)
     df = df.dropna(subset=["concept_id"])
     df["concept_id"] = df["concept_id"].astype(int)
